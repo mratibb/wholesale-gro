@@ -14,6 +14,7 @@ const ItemsByUser = ({ token }) => {
         });
         setItemsByUser(response.data);
       } catch (err) {
+        console.error('Fetch items error:', err);
         setModal({ show: true, message: 'Failed to load items', type: 'error' });
       }
     };
@@ -38,13 +39,18 @@ const ItemsByUser = ({ token }) => {
 \\textbf{User} & \\textbf{Item Name} & \\textbf{Serial Number} \\\\
 \\hline
 ${itemsByUser
-  .map(user => 
-    user.items.length > 0
+  .map(user => {
+    const username = user.username ? user.username.replace(/&/g, '\\&') : 'Unknown';
+    return user.items && user.items.length > 0
       ? user.items
-          .map(item => `${user.username} & ${item.name} & ${item.serialNumber} \\\\`)
+          .map(item => {
+            const itemName = item.name ? item.name.replace(/&/g, '\\&') : 'None';
+            const serialNumber = item.serialNumber ? item.serialNumber.replace(/&/g, '\\&') : 'None';
+            return `${username} & ${itemName} & ${serialNumber} \\\\`;
+          })
           .join('\n')
-      : `${user.username} & None & None \\\\`
-  )
+      : `${username} & None & None \\\\`;
+  })
   .join('\n')}
 \\hline
 \\end{tabular}
@@ -56,9 +62,12 @@ ${itemsByUser
       const response = await axios.post(
         '/api/export/pdf',
         { latexContent, filename: 'items_by_user.pdf' },
-        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+        { 
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          responseType: 'blob'
+        }
       );
-      const url = window.URL.createObjectURL(new Blob([new Uint8Array(response.data.pdf.data)], { type: 'application/pdf' }));
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', 'items_by_user.pdf');
@@ -94,17 +103,17 @@ ${itemsByUser
           </thead>
           <tbody>
             {itemsByUser.map(user => (
-              user.items.length > 0 ? (
+              user.items && user.items.length > 0 ? (
                 user.items.map(item => (
                   <tr key={`${user._id}-${item._id}`} className="border-b">
-                    <td className="p-2">{user.username}</td>
-                    <td className="p-2">{item.name}</td>
-                    <td className="p-2">{item.serialNumber}</td>
+                    <td className="p-2">{user.username || 'Unknown'}</td>
+                    <td className="p-2">{item.name || 'None'}</td>
+                    <td className="p-2">{item.serialNumber || 'None'}</td>
                   </tr>
                 ))
               ) : (
                 <tr key={user._id} className="border-b">
-                  <td className="p-2">{user.username}</td>
+                  <td className="p-2">{user.username || 'Unknown'}</td>
                   <td className="p-2">None</td>
                   <td className="p-2">None</td>
                 </tr>

@@ -14,6 +14,7 @@ const SalesByUser = ({ token }) => {
         });
         setSalesByUser(response.data);
       } catch (err) {
+        console.error('Fetch sales error:', err);
         setModal({ show: true, message: 'Failed to load sales', type: 'error' });
       }
     };
@@ -38,13 +39,19 @@ const SalesByUser = ({ token }) => {
 \\textbf{User} & \\textbf{Item Name} & \\textbf{Buyer Name} & \\textbf{Sale Date} \\\\
 \\hline
 ${salesByUser
-  .map(user => 
-    user.sales.length > 0
+  .map(user => {
+    const username = user.username ? user.username.replace(/&/g, '\\&') : 'Unknown';
+    return user.sales && user.sales.length > 0
       ? user.sales
-          .map(sale => `${user.username} & ${sale.item.name} & ${sale.buyerName} & ${new Date(sale.saleDate).toLocaleDateString()} \\\\`)
+          .map(sale => {
+            const itemName = sale.item && sale.item.name ? sale.item.name.replace(/&/g, '\\&') : 'None';
+            const buyerName = sale.buyerName ? sale.buyerName.replace(/&/g, '\\&') : 'None';
+            const saleDate = sale.saleDate ? new Date(sale.saleDate).toLocaleDateString() : 'None';
+            return `${username} & ${itemName} & ${buyerName} & ${saleDate} \\\\`;
+          })
           .join('\n')
-      : `${user.username} & None & None & None \\\\`
-  )
+      : `${username} & None & None & None \\\\`;
+  })
   .join('\n')}
 \\hline
 \\end{tabular}
@@ -56,9 +63,12 @@ ${salesByUser
       const response = await axios.post(
         '/api/export/pdf',
         { latexContent, filename: 'sales_by_user.pdf' },
-        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+        { 
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          responseType: 'blob'
+        }
       );
-      const url = window.URL.createObjectURL(new Blob([new Uint8Array(response.data.pdf.data)], { type: 'application/pdf' }));
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', 'sales_by_user.pdf');
@@ -95,18 +105,18 @@ ${salesByUser
           </thead>
           <tbody>
             {salesByUser.map(user => (
-              user.sales.length > 0 ? (
+              user.sales && user.sales.length > 0 ? (
                 user.sales.map(sale => (
                   <tr key={`${user._id}-${sale._id}`} className="border-b">
-                    <td className="p-2">{user.username}</td>
-                    <td className="p-2">{sale.item.name}</td>
-                    <td className="p-2">{sale.buyerName}</td>
-                    <td className="p-2">{new Date(sale.saleDate).toLocaleDateString()}</td>
+                    <td className="p-2">{user.username || 'Unknown'}</td>
+                    <td className="p-2">{sale.item && sale.item.name ? sale.item.name : 'None'}</td>
+                    <td className="p-2">{sale.buyerName || 'None'}</td>
+                    <td className="p-2">{sale.saleDate ? new Date(sale.saleDate).toLocaleDateString() : 'None'}</td>
                   </tr>
                 ))
               ) : (
                 <tr key={user._id} className="border-b">
-                  <td className="p-2">{user.username}</td>
+                  <td className="p-2">{user.username || 'Unknown'}</td>
                   <td className="p-2">None</td>
                   <td className="p-2">None</td>
                   <td className="p-2">None</td>

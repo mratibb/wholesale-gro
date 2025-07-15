@@ -78,8 +78,14 @@ router.get('/by-user', authMiddleware, adminMiddleware, async (req, res) => {
     
     const itemsByUser = users.map(user => ({
       _id: user._id,
-      username: user.username,
-      items: items.filter(item => item.assignedTo && item.assignedTo._id.toString() === user._id.toString())
+      username: user.username || 'Unknown',
+      items: items
+        .filter(item => item.assignedTo && item.assignedTo._id.toString() === user._id.toString())
+        .map(item => ({
+          _id: item._id,
+          name: item.name || 'None',
+          serialNumber: item.serialNumber || 'None',
+        }))
     }));
     
     res.json(itemsByUser);
