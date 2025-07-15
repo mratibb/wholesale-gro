@@ -1,3 +1,4 @@
+// client/src/components/Modal.js
 import React, { useEffect } from 'react';
 
 const Modal = ({ message, type, onClose }) => {
