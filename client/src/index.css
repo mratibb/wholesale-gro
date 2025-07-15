@@ -1,0 +1,42 @@
+/* client/src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #F3F4F6;
+}
+
+.card {
+  @apply bg-white rounded-xl shadow-lg p-6;
+}
+
+.btn-primary {
+  @apply bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium py-2 px-4 rounded-lg hover:from-blue-700 hover:to-blue-800 hover:shadow-md transform hover:scale-105 transition duration-200;
+}
+
+.alert {
+  @apply p-3 rounded-lg text-sm flex items-center gap-2 opacity-0 animate-slide-in;
+}
+
+.alert-error {
+  @apply bg-red-100 text-red-700 border border-red-300;
+}
+
+.alert-success {
+  @apply bg-green-100 text-green-700 border border-green-300;
+}
+
+input, select {
+  @apply w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition;
+}
+
+.sidebar-link {
+  @apply flex items-center gap-2 p-3 rounded-lg text-gray-700 hover:bg-blue-100 hover:text-blue-800 transition;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
