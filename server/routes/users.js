@@ -1,61 +1,55 @@
 const express = require('express');
+const router = express.Router();
 const User = require('../models/User');
 const Item = require('../models/Item');
-const { authMiddleware, adminMiddleware } = require('../middleware/authMiddleware');
-const router = express.Router();
+const Sale = require('../models/Sale');
+const authMiddleware = require('../middleware/auth');
+const adminMiddleware = require('../middleware/admin');
 
-// Get all users (Admin only)
+// Get all users (admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const users = await User.find();
+    const users = await User.find().select('-password');
     res.json(users);
   } catch (err) {
-    console.error('Error fetching users:', err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Delete user (Admin only, cannot delete self)
+// Get current user
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete user (admin only)
 router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    if (req.user.id === req.params.id) {
-      return res.status(403).json({ message: 'Cannot delete your own account' });
-    }
     const user = await User.findById(req.params.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Prevent deleting the last admin
+    if (user.role === 'admin') {
+      const adminCount = await User.countDocuments({ role: 'admin' });
+      if (adminCount <= 1) {
+        return res.status(400).json({ message: 'Cannot delete the last admin' });
+      }
     }
+
+    // Delete user and cascade to items and sales
     await User.deleteOne({ _id: req.params.id });
-    await Item.updateMany({ assignedTo: req.params.id }, { $unset: { assignedTo: '' } });
+    await Item.updateMany({ assignedTo: req.params.id }, { $set: { assignedTo: null } });
+    await Sale.deleteMany({ user: req.params.id });
+
     res.json({ message: 'User deleted successfully' });
   } catch (err) {
-    console.error('Error deleting user:', err);
-    res.status(400).json({ message: err.message });
-  }
-});
-
-// Assign item to user (Admin only)
-router.post('/assign', authMiddleware, adminMiddleware, async (req, res) => {
-  const { userId, itemId } = req.body;
-  console.log('Assign request:', { userId, itemId });
-  try {
-    if (!userId || !itemId) {
-      return res.status(400).json({ message: 'userId and itemId are required' });
-    }
-    const item = await Item.findById(itemId);
-    if (!item) {
-      return res.status(404).json({ message: 'Item not found' });
-    }
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    item.assignedTo = userId;
-    await item.save();
-    res.json(item);
-  } catch (err) {
-    console.error('Error in assign:', err);
-    res.status(400).json({ message: err.message });
+    console.error('Delete user error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

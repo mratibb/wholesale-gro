@@ -1,53 +1,50 @@
 const express = require('express');
-const { execSync } = require('child_process');
+const router = express.Router();
+const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { authMiddleware, adminMiddleware } = require('../middleware/authMiddleware');
-const router = express.Router();
+const util = require('util');
+const authMiddleware = require('../middleware/auth');
+const adminMiddleware = require('../middleware/admin');
 
-// Export LaTeX to PDF
+const execPromise = util.promisify(exec);
+
 router.post('/pdf', authMiddleware, adminMiddleware, async (req, res) => {
+  const { latexContent, filename } = req.body;
+
+  if (!latexContent || !filename) {
+    return res.status(400).json({ message: 'LaTeX content and filename are required' });
+  }
+
+  const tempDir = path.join(__dirname, '../temp');
+  const texFile = path.join(tempDir, `${filename.replace('.pdf', '')}.tex`);
+  const pdfFile = path.join(tempDir, `${filename.replace('.pdf', '')}.pdf`);
+
   try {
-    const { latexContent, filename } = req.body;
-    if (!latexContent || !filename) {
-      return res.status(400).json({ message: 'LaTeX content and filename are required' });
-    }
-
-    const tempDir = path.join(__dirname, '../temp');
     if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir);
+      fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    const texFilePath = path.join(tempDir, `${filename.replace('.pdf', '')}.tex`);
-    const pdfFilePath = path.join(tempDir, filename);
+    fs.writeFileSync(texFile, latexContent);
 
-    // Writing LaTeX content to a .tex file
-    fs.writeFileSync(texFilePath, latexContent);
+    const latexCommand = `latexmk -pdf -pdflatex="pdflatex -interaction=nonstopmode" -outdir=${tempDir} ${texFile}`;
+    await execPromise(latexCommand);
 
-    // Compiling LaTeX to PDF using latexmk
-    execSync(`latexmk -pdf -outdir="${tempDir}" "${texFilePath}"`, { stdio: 'inherit' });
+    if (!fs.existsSync(pdfFile)) {
+      throw new Error('PDF file was not generated');
+    }
 
-    // Reading the generated PDF
-    const pdfBuffer = fs.readFileSync(pdfFilePath);
+    const pdfData = fs.readFileSync(pdfFile);
+    res.json({ pdf: pdfData });
 
-    // Cleaning up temporary files
-    fs.unlinkSync(texFilePath);
-    fs.unlinkSync(pdfFilePath);
-    ['aux', 'log', 'fdb_latexmk', 'fls'].forEach((ext) => {
-      const tempFile = path.join(tempDir, `${filename.replace('.pdf', '')}.${ext}`);
-      if (fs.existsSync(tempFile)) {
-        fs.unlinkSync(tempFile);
-      }
-    });
-
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-    });
-    res.send(pdfBuffer);
+    // Clean up
+    fs.unlinkSync(texFile);
+    fs.unlinkSync(pdfFile);
+    const auxFiles = fs.readdirSync(tempDir).filter(file => file.startsWith(filename.replace('.pdf', '')));
+    auxFiles.forEach(file => fs.unlinkSync(path.join(tempDir, file)));
   } catch (err) {
-    console.error('Error generating PDF:', err);
-    res.status(500).json({ message: 'Error generating PDF' });
+    console.error('PDF generation error:', err);
+    res.status(500).json({ message: 'Failed to generate PDF', error: err.message });
   }
 });
 

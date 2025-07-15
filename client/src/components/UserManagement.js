@@ -5,91 +5,77 @@ import Modal from './Modal';
 const UserManagement = ({ token }) => {
   const [users, setUsers] = useState([]);
   const [items, setItems] = useState([]);
-  const [newItem, setNewItem] = useState({ name: '', serialNumber: '', description: '', price: '' });
-  const [assign, setAssign] = useState({ userId: '', itemId: '' });
   const [modal, setModal] = useState({ show: false, message: '', type: '' });
-  const [loading, setLoading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   useEffect(() => {
-    const fetchUsers = async () => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get('/api/users', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setUsers(response.data);
+        const [usersRes, itemsRes, currentUserRes] = await Promise.all([
+          axios.get('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get('/api/items', { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get('/api/users/me', { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        setUsers(usersRes.data);
+        setItems(itemsRes.data);
+        setCurrentUserId(currentUserRes.data._id);
       } catch (err) {
-        setModal({ show: true, message: err.response?.data?.message || 'Error fetching users', type: 'error' });
+        console.error('Error fetching data:', err);
+        setModal({ show: true, message: 'Failed to load data', type: 'error' });
       }
     };
-
-    const fetchItems = async () => {
-      try {
-        const response = await axios.get('/api/items', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setItems(response.data);
-      } catch (err) {
-        setModal({ show: true, message: err.response?.data?.message || 'Error fetching items', type: 'error' });
-      }
-    };
-
-    fetchUsers();
-    fetchItems();
+    fetchData();
   }, [token]);
 
-  const handleAddItem = async () => {
-    setLoading(true);
-    setModal({ show: false, message: '', type: '' });
+  const handleAssignItem = async (userId, itemId) => {
     try {
-      const response = await axios.post('/api/items', newItem, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setItems([...items, response.data]);
-      setNewItem({ name: '', serialNumber: '', description: '', price: '' });
-      setModal({ show: true, message: 'Item added successfully!', type: 'success' });
+      await axios.put(
+        `/api/items/${itemId}/assign`,
+        { userId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setItems(items.map(item => item._id === itemId ? { ...item, assignedTo: userId } : item));
+      setModal({ show: true, message: 'Item assigned successfully', type: 'success' });
     } catch (err) {
-      setModal({ show: true, message: err.response?.data?.message || 'Error adding item', type: 'error' });
-    } finally {
-      setLoading(false);
+      setModal({ show: true, message: err.response?.data?.message || 'Failed to assign item', type: 'error' });
     }
   };
 
-  const handleAssignItem = async () => {
-    if (!assign.userId || !assign.itemId) {
-      setModal({ show: true, message: 'Please select both a user and an item', type: 'error' });
-      return;
-    }
-    setLoading(true);
-    setModal({ show: false, message: '', type: '' });
+  const handleAddItem = async (e) => {
+    e.preventDefault();
+    const name = e.target.name.value;
+    const serialNumber = e.target.serialNumber.value;
+    const description = e.target.description.value;
+    const price = e.target.price.value;
+
     try {
-      console.log('Assigning:', assign);
-      const response = await axios.post('/api/users/assign', assign, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setItems(items.map((item) => (item._id === response.data._id ? response.data : item)));
-      setAssign({ userId: '', itemId: '' });
-      setModal({ show: true, message: 'Item assigned successfully!', type: 'success' });
+      const response = await axios.post(
+        '/api/items',
+        { name, serialNumber, description, price: Number(price) },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setItems([...items, response.data]);
+      setModal({ show: true, message: 'Item added successfully', type: 'success' });
+      e.target.reset();
     } catch (err) {
-      console.error('Assign error:', err.response?.data);
-      setModal({ show: true, message: err.response?.data?.message || 'Error assigning item', type: 'error' });
-    } finally {
-      setLoading(false);
+      setModal({ show: true, message: err.response?.data?.message || 'Failed to add item', type: 'error' });
     }
   };
 
   const handleDeleteUser = async (userId) => {
-    setLoading(true);
-    setModal({ show: false, message: '', type: '' });
+    if (userId === currentUserId) {
+      setModal({ show: true, message: 'Cannot delete your own account', type: 'error' });
+      return;
+    }
     try {
       await axios.delete(`/api/users/${userId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setUsers(users.filter((user) => user._id !== userId));
-      setModal({ show: true, message: 'User deleted successfully!', type: 'success' });
+      setUsers(users.filter(user => user._id !== userId));
+      setItems(items.map(item => item.assignedTo === userId ? { ...item, assignedTo: null } : item));
+      setModal({ show: true, message: 'User deleted successfully', type: 'success' });
     } catch (err) {
-      setModal({ show: true, message: err.response?.data?.message || 'Error deleting user', type: 'error' });
-    } finally {
-      setLoading(false);
+      setModal({ show: true, message: err.response?.data?.message || 'Failed to delete user', type: 'error' });
     }
   };
 
@@ -102,104 +88,72 @@ const UserManagement = ({ token }) => {
           onClose={() => setModal({ show: false, message: '', type: '' })}
         />
       )}
-      <div className="card max-w-5xl mx-auto">
-        <h2 className="text-3xl font-bold text-gray-800 mb-6">Admin Dashboard</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-4">Add Item</h3>
-            <input
-              type="text"
-              placeholder="Item Name"
-              value={newItem.name}
-              onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-              className="input mb-4"
-            />
-            <input
-              type="text"
-              placeholder="Serial Number"
-              value={newItem.serialNumber}
-              onChange={(e) => setNewItem({ ...newItem, serialNumber: e.target.value })}
-              className="input mb-4"
-            />
-            <input
-              type="text"
-              placeholder="Description"
-              value={newItem.description}
-              onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-              className="input mb-4"
-            />
-            <input
-              type="number"
-              placeholder="Price"
-              value={newItem.price}
-              onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
-              className="input mb-4"
-            />
-            <button
-              onClick={handleAddItem}
-              className="btn-primary w-full disabled:opacity-50"
-              disabled={loading}
-            >
-              {loading ? 'Adding...' : 'Add Item'}
-            </button>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Admin Dashboard</h2>
+      
+      <div className="mb-8">
+        <h3 className="text-xl font-semibold text-gray-700 mb-4">Add Item</h3>
+        <form onSubmit={handleAddItem} className="card">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block mb-1 text-gray-700 font-medium">Item Name</label>
+              <input name="name" className="input" placeholder="Enter item name" required />
+            </div>
+            <div>
+              <label className="block mb-1 text-gray-700 font-medium">Serial Number</label>
+              <input name="serialNumber" className="input" placeholder="Enter serial number" required />
+            </div>
+            <div>
+              <label className="block mb-1 text-gray-700 font-medium">Description</label>
+              <input name="description" className="input" placeholder="Enter description" />
+            </div>
+            <div>
+              <label className="block mb-1 text-gray-700 font-medium">Price</label>
+              <input name="price" type="number" className="input" placeholder="Enter price" required />
+            </div>
           </div>
-          <div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-4">Assign Item to User</h3>
-            <select
-              value={assign.userId}
-              onChange={(e) => setAssign({ ...assign, userId: e.target.value })}
-              className="input mb-4"
-            >
-              <option value="">Select User</option>
-              {users.map((user) => (
-                <option key={user._id} value={user._id}>
-                  {user.username}
-                </option>
-              ))}
-            </select>
-            <select
-              value={assign.itemId}
-              onChange={(e) => setAssign({ ...assign, itemId: e.target.value })}
-              className="input mb-4"
-            >
-              <option value="">Select Item</option>
-              {items.map((item) => (
-                <option key={item._id} value={item._id}>
-                  {item.name} {item.assignedTo ? `(Assigned to ${item.assignedTo.username})` : '(Unassigned)'}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={handleAssignItem}
-              className="btn-primary w-full disabled:opacity-50"
-              disabled={loading}
-            >
-              {loading ? 'Assigning...' : 'Assign Item'}
-            </button>
-          </div>
-        </div>
+          <button type="submit" className="btn-primary mt-4">Add Item</button>
+        </form>
+      </div>
+
+      <div>
         <h3 className="text-xl font-semibold text-gray-700 mb-4">Users</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse bg-white rounded-lg shadow">
+        <div className="card">
+          <table className="w-full">
             <thead>
-              <tr className="bg-gray-100">
-                <th className="border border-gray-200 p-3 text-left text-gray-700 font-semibold">Username</th>
-                <th className="border border-gray-200 p-3 text-left text-gray-700 font-semibold">Email</th>
-                <th className="border border-gray-200 p-3 text-left text-gray-700 font-semibold">Role</th>
-                <th className="border border-gray-200 p-3 text-left text-gray-700 font-semibold">Actions</th>
+              <tr className="border-b">
+                <th className="text-left p-2">Username</th>
+                <th className="text-left p-2">Email</th>
+                <th className="text-left p-2">Role</th>
+                <th className="text-left p-2">Assign Item</th>
+                <th className="text-left p-2">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user._id} className="hover:bg-gray-50">
-                  <td className="border border-gray-200 p-3">{user.username}</td>
-                  <td className="border border-gray-200 p-3">{user.email}</td>
-                  <td className="border border-gray-200 p-3">{user.role}</td>
-                  <td className="border border-gray-200 p-3">
+              {users.map(user => (
+                <tr key={user._id} className="border-b">
+                  <td className="p-2">{user.username}</td>
+                  <td className="p-2">{user.email}</td>
+                  <td className="p-2">{user.role}</td>
+                  <td className="p-2">
+                    <select
+                      className="input"
+                      onChange={(e) => handleAssignItem(user._id, e.target.value)}
+                      defaultValue=""
+                    >
+                      <option value="" disabled>Select an item</option>
+                      {items
+                        .filter(item => !item.assignedTo || item.assignedTo === user._id)
+                        .map(item => (
+                          <option key={item._id} value={item._id}>
+                            {item.name} ({item.serialNumber})
+                          </option>
+                        ))}
+                    </select>
+                  </td>
+                  <td className="p-2">
                     <button
                       onClick={() => handleDeleteUser(user._id)}
-                      className="btn-primary px-3 py-1 text-sm disabled:opacity-50"
-                      disabled={loading}
+                      className="btn-danger"
                     >
                       Delete
                     </button>
