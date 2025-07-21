@@ -32,6 +32,19 @@ router.get('/by-user', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
+// Get sales for the logged-in user (normal users)
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const sales = await Sale.find({ user: req.user.id })
+      .populate('user', 'username')
+      .populate('item', 'name');
+    res.json(sales);
+  } catch (err) {
+    console.error('Get user sales error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Create sale (non-admin users)
 router.post('/', authMiddleware, async (req, res) => {
   const { itemId, buyerName, saleDate } = req.body;

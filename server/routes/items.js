@@ -16,6 +16,17 @@ router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
+// Get items assigned to the logged-in user (normal users)
+router.get('/assigned', authMiddleware, async (req, res) => {
+  try {
+    const items = await Item.find({ assignedTo: req.user.id }).populate('assignedTo', 'username');
+    res.json(items);
+  } catch (err) {
+    console.error('Get assigned items error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Create item (admin only)
 router.post('/', authMiddleware, adminMiddleware, async (req, res) => {
   const { name, serialNumber, description, price } = req.body;
